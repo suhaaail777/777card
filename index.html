@@ -1,0 +1,605 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#000000">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="description" content="A simple digital wallet for your cards.">
+<link rel="manifest" href="./manifest.webmanifest">
+<link rel="icon" href="./static/icon.svg" type="image/svg+xml">
+<title>CardVault</title>
+<style>
+:root {
+  --bg: #000;
+  --sheet-bg: rgba(28,28,30,0.92);
+  --sheet-solid: #1c1c1e;
+  --ink: #fff;
+  --ink2: rgba(255,255,255,0.55);
+  --ink3: rgba(255,255,255,0.3);
+  --line: rgba(255,255,255,0.1);
+  --accent: #0a84ff;
+  --danger: #ff453a;
+  --radius-card: 16px;
+  --radius-sheet: 20px;
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bot: env(safe-area-inset-bottom, 0px);
+}
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); font-family: -apple-system, "SF Pro Display", "SF Pro Text", BlinkMacSystemFont, "Helvetica Neue", sans-serif; overscroll-behavior: none; }
+button, input, select, textarea { font: inherit; }
+button { cursor: pointer; border: none; background: none; }
+
+/* ── App shell ── */
+.app { max-width: 430px; margin: 0 auto; min-height: 100dvh; display: flex; flex-direction: column; }
+
+/* ── Header ── */
+.wl-header {
+  padding: calc(var(--safe-top) + 18px) 20px 0;
+  display: flex; justify-content: space-between; align-items: center;
+}
+.wl-title { font-size: 34px; font-weight: 700; letter-spacing: -0.5px; }
+.wl-header-actions { display: flex; gap: 8px; }
+.icon-btn {
+  width: 36px; height: 36px; border-radius: 50%;
+  background: rgba(255,255,255,0.12);
+  display: grid; place-items: center;
+  color: var(--ink); font-size: 16px;
+  transition: background .15s;
+}
+.icon-btn:active { background: rgba(255,255,255,0.22); }
+
+/* ── Search ── */
+.wl-search {
+  margin: 14px 20px 0;
+  display: flex; align-items: center; gap: 8px;
+  background: rgba(255,255,255,0.1);
+  border-radius: 12px; padding: 0 12px; height: 40px;
+  backdrop-filter: blur(10px);
+}
+.wl-search svg { flex-shrink: 0; opacity: .5; }
+.wl-search input {
+  border: 0; outline: 0; background: transparent;
+  color: var(--ink); font-size: 15px; width: 100%;
+}
+.wl-search input::placeholder { color: rgba(255,255,255,0.4); }
+
+/* ── Filter pills ── */
+.wl-filters {
+  display: flex; gap: 8px; overflow-x: auto; padding: 14px 20px 0;
+  scrollbar-width: none;
+}
+.wl-filters::-webkit-scrollbar { display: none; }
+.wl-filters button {
+  white-space: nowrap; border-radius: 20px; padding: 6px 14px;
+  font-size: 13px; font-weight: 500;
+  background: rgba(255,255,255,0.1); color: rgba(255,255,255,0.6);
+  transition: background .15s, color .15s;
+}
+.wl-filters button.active {
+  background: var(--accent); color: #fff;
+}
+
+/* ── Card stack ── */
+.wl-stack-wrap {
+  flex: 1; overflow-y: auto; padding: 20px 20px calc(90px + var(--safe-bot));
+  scrollbar-width: none;
+}
+.wl-stack-wrap::-webkit-scrollbar { display: none; }
+
+.wl-stack { display: flex; flex-direction: column; gap: 14px; }
+
+/* ── Individual card ── */
+.wl-card {
+  position: relative; border-radius: var(--radius-card);
+  min-height: 200px; padding: 22px 22px 20px;
+  color: #fff; overflow: hidden;
+  box-shadow: 0 8px 32px rgba(0,0,0,.5);
+  cursor: pointer;
+  transition: transform .18s cubic-bezier(.4,0,.2,1), box-shadow .18s;
+  -webkit-user-select: none; user-select: none;
+}
+.wl-card:active { transform: scale(0.97); box-shadow: 0 4px 16px rgba(0,0,0,.4); }
+
+/* Shine overlay */
+.wl-card::before {
+  content: ""; position: absolute; inset: 0;
+  background: linear-gradient(135deg, rgba(255,255,255,.18) 0%, transparent 60%);
+  pointer-events: none;
+}
+/* Decorative circles */
+.wl-card::after {
+  content: ""; position: absolute;
+  width: 220px; height: 220px; border-radius: 50%;
+  background: rgba(255,255,255,.07);
+  right: -60px; bottom: -80px;
+  pointer-events: none;
+}
+
+.wl-card-top { display: flex; justify-content: space-between; align-items: flex-start; }
+.wl-card-chip {
+  font-size: 11px; font-weight: 600; letter-spacing: .5px;
+  text-transform: uppercase;
+  background: rgba(255,255,255,.2); backdrop-filter: blur(6px);
+  padding: 5px 10px; border-radius: 20px;
+}
+.wl-card-menu {
+  width: 32px; height: 32px; border-radius: 50%;
+  background: rgba(255,255,255,.18); backdrop-filter: blur(6px);
+  display: grid; place-items: center;
+  color: #fff; font-size: 18px; line-height: 1;
+  transition: background .15s;
+}
+.wl-card-menu:active { background: rgba(255,255,255,.3); }
+
+.wl-card-name { font-size: 22px; font-weight: 700; letter-spacing: -.3px; margin: 24px 0 4px; }
+.wl-card-holder { font-size: 12px; color: rgba(255,255,255,.7); text-transform: uppercase; letter-spacing: .8px; }
+
+.wl-card-bottom {
+  display: flex; justify-content: space-between; align-items: flex-end;
+  margin-top: 20px;
+}
+.wl-card-number { font-size: 13px; color: rgba(255,255,255,.7); letter-spacing: 1px; font-variant-numeric: tabular-nums; }
+.wl-card-expiry { font-size: 13px; font-weight: 600; }
+
+/* ── Empty state ── */
+.wl-empty {
+  display: flex; flex-direction: column; align-items: center;
+  justify-content: center; padding: 60px 20px; text-align: center; gap: 10px;
+}
+.wl-empty-icon { font-size: 52px; opacity: .25; }
+.wl-empty h3 { margin: 0; font-size: 20px; font-weight: 600; }
+.wl-empty p { margin: 0; font-size: 14px; color: var(--ink2); }
+
+/* ── FAB ── */
+.wl-fab {
+  position: fixed; bottom: calc(24px + var(--safe-bot)); left: 50%; transform: translateX(-50%);
+  background: var(--accent); color: #fff;
+  border-radius: 28px; padding: 16px 28px;
+  font-size: 17px; font-weight: 600; letter-spacing: -.2px;
+  box-shadow: 0 4px 24px rgba(10,132,255,.45);
+  display: flex; align-items: center; gap: 8px;
+  transition: transform .15s, box-shadow .15s;
+  z-index: 5; white-space: nowrap;
+}
+.wl-fab:active { transform: translateX(-50%) scale(0.96); box-shadow: 0 2px 12px rgba(10,132,255,.3); }
+
+/* ── Overlay / Sheet ── */
+.overlay {
+  position: fixed; inset: 0; z-index: 20;
+  background: rgba(0,0,0,.6);
+  backdrop-filter: blur(8px);
+  display: flex; align-items: flex-end; justify-content: center;
+  opacity: 0; pointer-events: none;
+  transition: opacity .25s;
+  padding: 0 0 0;
+}
+.overlay.show { opacity: 1; pointer-events: all; }
+.overlay.show .sheet { transform: translateY(0); }
+
+.sheet {
+  width: min(430px, 100%);
+  max-height: 92dvh;
+  background: var(--sheet-solid);
+  border-radius: var(--radius-sheet) var(--radius-sheet) 0 0;
+  overflow-y: auto;
+  padding: 0 0 calc(20px + var(--safe-bot));
+  transform: translateY(100%);
+  transition: transform .35s cubic-bezier(.4,0,.2,1);
+  scrollbar-width: none;
+}
+.sheet::-webkit-scrollbar { display: none; }
+
+/* Drag handle */
+.sheet-handle {
+  width: 36px; height: 5px; border-radius: 3px;
+  background: rgba(255,255,255,.25);
+  margin: 10px auto 0;
+}
+.sheet-head {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 16px 20px 12px;
+  border-bottom: 1px solid var(--line);
+}
+.sheet-head h3 { margin: 0; font-size: 17px; font-weight: 600; }
+.sheet-close {
+  width: 30px; height: 30px; border-radius: 50%;
+  background: rgba(255,255,255,.12);
+  display: grid; place-items: center;
+  color: var(--ink); font-size: 18px;
+  transition: background .15s;
+}
+.sheet-close:active { background: rgba(255,255,255,.22); }
+
+.sheet-body { padding: 16px 20px 0; }
+
+/* ── Form fields ── */
+.field { margin-bottom: 14px; }
+.field label { display: block; font-size: 12px; font-weight: 600; color: var(--ink2); margin-bottom: 6px; text-transform: uppercase; letter-spacing: .4px; }
+.field input, .field select, .field textarea {
+  width: 100%; border: none; outline: none;
+  background: rgba(255,255,255,.08);
+  border-radius: 12px; padding: 13px 14px;
+  color: var(--ink); font-size: 15px;
+  transition: background .15s;
+}
+.field input:focus, .field select:focus, .field textarea:focus {
+  background: rgba(255,255,255,.13);
+}
+.field input::placeholder, .field textarea::placeholder { color: rgba(255,255,255,.3); }
+.field select option { background: #2c2c2e; color: #fff; }
+.field textarea { min-height: 70px; resize: vertical; }
+.twocol { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+.scan-row { display: flex; gap: 8px; }
+.scan-row input { flex: 1; }
+.btn-scan {
+  background: rgba(255,255,255,.1); color: var(--ink);
+  border-radius: 12px; padding: 0 14px; font-size: 13px; font-weight: 600;
+  white-space: nowrap; transition: background .15s;
+}
+.btn-scan:active { background: rgba(255,255,255,.2); }
+
+.muted-note { font-size: 12px; color: var(--ink2); line-height: 1.5; margin: 6px 0 0; }
+
+.btn-photo {
+  width: 100%; border-radius: 12px; padding: 13px 10px;
+  background: rgba(255,255,255,.08); color: var(--ink);
+  font-size: 13px; font-weight: 500;
+  border: 1.5px dashed rgba(255,255,255,.2);
+  transition: background .15s;
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  min-height: 80px; flex-direction: column;
+}
+.btn-photo:active { background: rgba(255,255,255,.14); }
+.btn-photo img { width: 100%; height: 60px; object-fit: cover; border-radius: 8px; }
+
+.btn-primary {
+  width: 100%; border-radius: 14px;
+  background: var(--accent); color: #fff;
+  padding: 15px; font-size: 17px; font-weight: 600;
+  margin-top: 8px; transition: opacity .15s;
+}
+.btn-primary:active { opacity: .8; }
+
+/* ── Detail sheet ── */
+.detail-card-preview {
+  margin: 16px 20px; border-radius: var(--radius-card);
+  min-height: 180px; padding: 20px;
+  color: #fff; position: relative; overflow: hidden;
+}
+.detail-card-preview::before {
+  content: ""; position: absolute; inset: 0;
+  background: linear-gradient(135deg, rgba(255,255,255,.18) 0%, transparent 60%);
+  pointer-events: none;
+}
+.detail-card-preview::after {
+  content: ""; position: absolute;
+  width: 200px; height: 200px; border-radius: 50%;
+  background: rgba(255,255,255,.07);
+  right: -50px; bottom: -70px; pointer-events: none;
+}
+.detail-card-name { font-size: 22px; font-weight: 700; letter-spacing: -.3px; margin: 20px 0 4px; }
+.detail-card-holder { font-size: 12px; color: rgba(255,255,255,.7); text-transform: uppercase; letter-spacing: .8px; }
+.detail-card-bottom { display: flex; justify-content: space-between; margin-top: 18px; font-size: 13px; }
+.detail-card-bottom span { color: rgba(255,255,255,.7); letter-spacing: 1px; }
+.detail-card-bottom strong { font-weight: 600; }
+
+.detail-rows { margin: 0 20px; }
+.detail-row {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 14px 0; border-bottom: 1px solid var(--line);
+  font-size: 15px;
+}
+.detail-row:last-child { border-bottom: none; }
+.detail-row-label { color: var(--ink2); font-size: 14px; }
+.detail-row-value { font-weight: 500; text-align: right; max-width: 60%; word-break: break-word; }
+
+.detail-img { width: 100%; border-radius: 12px; object-fit: contain; background: rgba(255,255,255,.05); margin: 4px 0; }
+
+.detail-actions { display: flex; gap: 10px; margin: 16px 20px 0; }
+.btn-action {
+  flex: 1; border-radius: 14px; padding: 14px;
+  font-size: 15px; font-weight: 600;
+  background: rgba(255,255,255,.1); color: var(--ink);
+  transition: background .15s;
+}
+.btn-action:active { background: rgba(255,255,255,.18); }
+.btn-action.danger { color: var(--danger); }
+
+/* ── Scanner ── */
+#scannerVideo { width: 100%; border-radius: 14px; background: #000; max-height: 50vh; display: block; }
+#scannerResult { font-size: 13px; color: var(--ink2); margin-top: 10px; text-align: center; }
+
+/* ── Camera capture overlay ── */
+#cameraOverlay {
+  position: fixed; inset: 0; z-index: 40;
+  background: #000;
+  display: none; flex-direction: column;
+}
+#cameraOverlay.show { display: flex; }
+#cameraVideo {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  object-fit: cover;
+}
+.cam-dim {
+  position: absolute; inset: 0;
+  background: rgba(0,0,0,.55);
+  /* punch out the card rectangle via clip-path mask */
+}
+.cam-frame {
+  position: absolute;
+  /* sized + positioned by JS */
+  border-radius: 12px;
+  box-shadow: 0 0 0 9999px rgba(0,0,0,.55);
+  pointer-events: none;
+}
+/* Corner brackets */
+.cam-frame::before, .cam-frame::after,
+.cam-corner-bl, .cam-corner-br {
+  content: ''; position: absolute;
+  width: 22px; height: 22px;
+  border-color: #fff; border-style: solid;
+  border-radius: 3px;
+}
+.cam-frame::before  { top: -2px;    left: -2px;  border-width: 3px 0 0 3px; }
+.cam-frame::after   { top: -2px;    right: -2px; border-width: 3px 3px 0 0; }
+.cam-corner-bl { bottom: -2px; left: -2px;  border-width: 0 0 3px 3px; }
+.cam-corner-br { bottom: -2px; right: -2px; border-width: 0 3px 3px 0; }
+
+.cam-label {
+  position: absolute; top: calc(var(--safe-top) + 18px); left: 0; right: 0;
+  text-align: center; color: #fff; font-size: 15px; font-weight: 600;
+  text-shadow: 0 1px 4px rgba(0,0,0,.6);
+}
+.cam-hint {
+  position: absolute; color: rgba(255,255,255,.7); font-size: 13px;
+  text-align: center; left: 0; right: 0;
+  text-shadow: 0 1px 4px rgba(0,0,0,.6);
+  /* top set by JS, just below frame */
+}
+.cam-actions {
+  position: absolute; bottom: calc(var(--safe-bot) + 32px);
+  left: 0; right: 0;
+  display: flex; justify-content: center; align-items: center; gap: 32px;
+}
+.cam-shutter {
+  width: 72px; height: 72px; border-radius: 50%;
+  background: #fff; border: 5px solid rgba(255,255,255,.4);
+  box-shadow: 0 0 0 3px rgba(255,255,255,.25);
+  transition: transform .12s;
+}
+.cam-shutter:active { transform: scale(0.92); }
+.cam-cancel {
+  color: #fff; font-size: 15px; font-weight: 500;
+  padding: 10px 18px;
+  background: rgba(255,255,255,.15); border-radius: 20px;
+  backdrop-filter: blur(6px);
+}
+
+/* ── Toast ── */
+.toast {
+  position: fixed; bottom: calc(100px + var(--safe-bot)); left: 50%; transform: translateX(-50%);
+  background: rgba(44,44,46,.95); backdrop-filter: blur(12px);
+  color: #fff; padding: 12px 18px; border-radius: 14px;
+  font-size: 14px; font-weight: 500;
+  opacity: 0; pointer-events: none; transition: opacity .2s;
+  z-index: 50; white-space: nowrap; max-width: 90%;
+}
+.toast.show { opacity: 1; }
+
+/* ── Stats bar ── */
+.wl-stats {
+  display: flex; gap: 10px; padding: 14px 20px 0;
+}
+.wl-stat {
+  flex: 1; background: rgba(255,255,255,.07);
+  border-radius: 14px; padding: 12px 14px;
+}
+.wl-stat small { font-size: 11px; color: var(--ink2); text-transform: uppercase; letter-spacing: .5px; font-weight: 600; }
+.wl-stat strong { display: block; font-size: 26px; font-weight: 700; margin-top: 2px; }
+
+/* ── Section header ── */
+.wl-section-head {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 18px 20px 0;
+}
+.wl-section-head h3 { margin: 0; font-size: 20px; font-weight: 700; }
+.wl-section-head button { font-size: 13px; color: var(--accent); font-weight: 500; }
+
+/* ── Color swatch row ── */
+.color-swatches { display: flex; gap: 10px; flex-wrap: wrap; padding: 4px 0; }
+.color-swatch {
+  width: 36px; height: 36px; border-radius: 50%; cursor: pointer;
+  border: 3px solid transparent; transition: border-color .15s, transform .15s;
+}
+.color-swatch.selected { border-color: #fff; transform: scale(1.15); }
+
+/* Light mode override */
+@media (prefers-color-scheme: light) {
+  body:not(.dark) {
+    --bg: #f2f2f7;
+    --sheet-solid: #fff;
+    --ink: #000;
+    --ink2: rgba(0,0,0,.5);
+    --ink3: rgba(0,0,0,.25);
+    --line: rgba(0,0,0,.1);
+  }
+  body:not(.dark) .wl-search { background: rgba(0,0,0,.07); }
+  body:not(.dark) .wl-search input { color: #000; }
+  body:not(.dark) .wl-search input::placeholder { color: rgba(0,0,0,.35); }
+  body:not(.dark) .wl-filters button { background: rgba(0,0,0,.07); color: rgba(0,0,0,.5); }
+  body:not(.dark) .wl-stat { background: rgba(0,0,0,.05); }
+  body:not(.dark) .icon-btn { background: rgba(0,0,0,.07); color: #000; }
+  body:not(.dark) .field input, body:not(.dark) .field select, body:not(.dark) .field textarea { background: rgba(0,0,0,.05); color: #000; }
+  body:not(.dark) .field input:focus, body:not(.dark) .field select:focus, body:not(.dark) .field textarea:focus { background: rgba(0,0,0,.09); }
+  body:not(.dark) .field input::placeholder, body:not(.dark) .field textarea::placeholder { color: rgba(0,0,0,.3); }
+  body:not(.dark) .field select option { background: #fff; color: #000; }
+  body:not(.dark) .btn-scan { background: rgba(0,0,0,.07); color: #000; }
+  body:not(.dark) .btn-action { background: rgba(0,0,0,.06); color: #000; }
+  body:not(.dark) .sheet-close { background: rgba(0,0,0,.07); color: #000; }
+  body:not(.dark) .wl-card-menu { background: rgba(255,255,255,.25); }
+  body:not(.dark) .toast { background: rgba(50,50,50,.9); }
+  body:not(.dark) .overlay { background: rgba(0,0,0,.4); }
+}
+body.dark {
+  --bg: #000;
+  --sheet-solid: #1c1c1e;
+  --ink: #fff;
+  --ink2: rgba(255,255,255,.55);
+  --line: rgba(255,255,255,.1);
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="wl-header">
+    <div class="wl-title">Wallet</div>
+    <div class="wl-header-actions">
+      <button class="icon-btn" id="themeBtn" title="Toggle theme" aria-label="Toggle theme">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 3a9 9 0 1 0 9 9c0-.46-.04-.92-.1-1.36a5.389 5.389 0 0 1-4.4 2.26 5.403 5.403 0 0 1-3.14-9.8c-.44-.06-.9-.1-1.36-.1z"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <div class="wl-stats">
+    <div class="wl-stat"><small>Cards</small><strong id="totalCount">—</strong></div>
+    <div class="wl-stat"><small>Categories</small><strong id="categoryCount">—</strong></div>
+  </div>
+
+  <div class="wl-search">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/></svg>
+    <input id="searchInput" placeholder="Search" autocomplete="off" autocorrect="off" spellcheck="false">
+  </div>
+
+  <div class="wl-filters" id="filters"></div>
+
+  <div class="wl-section-head">
+    <h3>Cards</h3>
+    <button id="sortBtn">Recently added</button>
+  </div>
+
+  <div class="wl-stack-wrap">
+    <div class="wl-stack" id="cards">
+      <div class="wl-empty">
+        <div class="wl-empty-icon">💳</div>
+        <h3>No cards yet</h3>
+        <p>Tap + to add your first card.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<button class="wl-fab" id="addBtn">
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+  Add Card
+</button>
+
+<!-- Add / Edit sheet -->
+<div class="overlay" id="formOverlay">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <div class="sheet-head">
+      <h3 id="formTitle">New Card</h3>
+      <button class="sheet-close" data-close="formOverlay">✕</button>
+    </div>
+    <div class="sheet-body">
+      <form id="cardForm">
+        <input type="hidden" id="editId">
+        <div class="field"><label>Card name</label><input id="name" required placeholder="e.g. Driver's Licence" autocomplete="off"></div>
+        <div class="twocol">
+          <div class="field"><label>Category</label>
+            <select id="category">
+              <option>Identity</option><option>Bank</option><option>Membership</option>
+              <option>Loyalty</option><option>Travel</option><option>Other</option>
+            </select>
+          </div>
+          <div class="field"><label>Cardholder</label><input id="holder" placeholder="Your name" autocomplete="off"></div>
+        </div>
+        <div class="field"><label>Card number / ID</label>
+          <div class="scan-row">
+            <input id="number" placeholder="Enter or scan" autocomplete="off">
+            <button type="button" class="btn-scan" id="scanBtn">⊡ Scan</button>
+          </div>
+        </div>
+        <div class="twocol">
+          <div class="field"><label>Expiry</label><input id="expiry" placeholder="MM/YYYY" autocomplete="off"></div>
+          <div class="field"><label>Colour</label>
+            <select id="color" style="display:none"></select>
+            <div class="color-swatches" id="colorSwatches"></div>
+          </div>
+        </div>
+        <div class="field"><label>Notes</label><textarea id="notes" placeholder="Useful details…"></textarea></div>
+        <div class="field">
+          <label>Photos (optional)</label>
+          <div class="twocol">
+            <div>
+              <button type="button" class="btn-photo" id="captureFront">
+                <span id="captureFrontThumb">📷 Front</span>
+              </button>
+              <input type="file" id="frontImage" accept="image/*" style="display:none">
+            </div>
+            <div>
+              <button type="button" class="btn-photo" id="captureBack">
+                <span id="captureBackThumb">📷 Back</span>
+              </button>
+              <input type="file" id="backImage" accept="image/*" style="display:none">
+            </div>
+          </div>
+          <p class="muted-note">Stored locally on this device.</p>
+        </div>
+        <button class="btn-primary" type="submit">Save Card</button>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Detail sheet -->
+<div class="overlay" id="detailOverlay">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <div class="sheet-head">
+      <h3>Card Details</h3>
+      <button class="sheet-close" data-close="detailOverlay">✕</button>
+    </div>
+    <div id="detailContent"></div>
+  </div>
+</div>
+
+<!-- Scanner sheet -->
+<div class="overlay" id="scannerOverlay">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <div class="sheet-head">
+      <h3>Scan Code</h3>
+      <button class="sheet-close" data-close="scannerOverlay" id="stopScan">✕</button>
+    </div>
+    <div class="sheet-body">
+      <video id="scannerVideo" autoplay playsinline></video>
+      <div id="scannerResult">Point your camera at a QR code or barcode.</div>
+      <button class="btn-primary" id="manualScanClose" style="margin-top:12px">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- Camera capture overlay -->
+<div id="cameraOverlay">
+  <video id="cameraVideo" autoplay playsinline muted></video>
+  <div class="cam-frame" id="camFrame">
+    <div class="cam-corner-bl"></div>
+    <div class="cam-corner-br"></div>
+  </div>
+  <div class="cam-label" id="camLabel">Position card in frame</div>
+  <div class="cam-hint" id="camHint">Align card edges with the guides</div>
+  <div class="cam-actions">
+    <button class="cam-cancel" id="camCancel">Cancel</button>
+    <button class="cam-shutter" id="camShutter" aria-label="Capture"></button>
+  </div>
+</div>
+<canvas id="camCanvas" style="display:none"></canvas>
+
+<div class="toast" id="toast"></div>
+<script src="./static/app.js" defer></script>
+</body>
+</html>
