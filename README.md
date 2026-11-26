@@ -1,34 +1,35 @@
-# CardVault — GitHub Pages Edition
+# CardVault — Complete GitHub Pages Edition
 
-A static, installable Progressive Web App (PWA) for keeping cards on your phone.
+A local-first, installable PWA for storing identity, membership, loyalty and other cards. No account or backend is required.
 
-## Included
-- Responsive mobile-first card holder
-- Add, edit, view, search, filter and delete cards
-- Card front/back photo capture or upload
-- Browser-local storage; no account, login, or password required
-- QR/barcode camera scanning where supported by the browser
-- PWA manifest, icons and service worker for install/offline app shell
-- No server or build step required
+## Features
+- Add, edit, search, filter, favourite and delete cards
+- Card front/back camera capture and image upload
+- OCR-assisted text reading (requires internet to load the OCR library)
+- QR/barcode scanning on supported browsers
+- Offline app shell and locally stored card data/photos
+- Dark/light theme
+- Optional 6-digit PIN access lock
+- Encrypted backup/restore using PBKDF2 and AES-256-GCM
+- Expiry check and browser notification permission
+- Optional cloud sync is reserved for a future connected backend; it is not active in this static build
 
 ## Publish on GitHub Pages
-1. Create a new GitHub repository, for example `cardvault`.
-2. Upload **all files and folders in this package** to the repository root. Keep `index.html`, `manifest.webmanifest`, and `sw.js` at the root.
-3. In GitHub, open **Settings → Pages**.
-4. Under **Build and deployment**, choose **Deploy from a branch**.
-5. Select branch `main` and folder `/ (root)`, then Save.
-6. Wait for the Pages deployment and open the published URL on your phone.
+1. Create a repository (e.g. `cardvault`).
+2. Upload the contents of this folder to the repository root. Keep `index.html`, `manifest.webmanifest`, and `sw.js` at the root.
+3. Open **Settings → Pages**. Choose **Deploy from a branch**, branch `main`, folder `/ (root)`, then Save.
+4. Open the published HTTPS URL on your phone.
 
-## Install on mobile
-- **Android / Chrome:** open the GitHub Pages URL → browser menu → Install app (or Add to Home screen).
-- **iPhone / Safari:** open the URL → Share → Add to Home Screen.
+## Install
+- Android: open in Chrome and choose Install app / Add to Home screen.
+- iPhone: open in Safari → Share → Add to Home Screen.
 
-GitHub Pages serves over HTTPS, which is required for service workers and camera access. Camera barcode scanning depends on browser support; current Chromium browsers generally provide the `BarcodeDetector` API, while Safari support may vary.
+## Security notes
+- The optional PIN is an access lock, not encryption of the live browser database. Anyone with direct access to the browser profile or developer tools may be able to access locally stored data. Use device-level security as well.
+- Encrypted backup protects the exported backup file with AES-256-GCM. Use a strong, unique passphrase and keep it safe; it cannot be recovered if lost.
+- Browser notifications are best-effort and may only work while the app is open; this build does not include server push notifications.
+- Camera access requires HTTPS and user permission. OCR and some scanning features may require internet or browser API support.
+- Cloud sync is intentionally optional and not configured in the static GitHub Pages version. A backend/provider integration is required before multi-device sync can work.
 
-## Important limitations
-This GitHub Pages edition is static. It does not include cloud backup or cross-device synchronization. Cards and photos are stored locally in the browser on the device where they are added. Clearing browser site data or losing that device may delete the cards.
-
-## Authentication removed
-This build has no account login, vault password, or encryption prompt. Cards and photos are stored in the browser's local storage on the device. Anyone who can open this browser profile may be able to view them. Clearing browser/site data can delete the cards. This GitHub Pages version does not provide cloud backup or cross-device sync.
-
-If you previously used the password-protected CardVault build, its encrypted cards are not automatically imported into this password-free version. Open the older build and unlock it with the original vault password, then manually re-add/export details as needed. Do not delete the old site data until you have recovered anything important.
+## Data safety
+Cards and images are stored in this browser on this device. Create encrypted backups regularly before clearing browser data, changing devices, or reinstalling the app.
