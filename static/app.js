@@ -13,8 +13,10 @@ const PALETTE = {
 };
 
 const STORAGE_KEY = 'cardvault_cards_v2';
+const SECURITY_KEY = 'cardvault_security_v1';
+const THEME_KEY = 'cardvault_theme_v1';
 let cards = [], active = 'All', sortNewest = true, scannerStream = null, detector = null;
-const categories = ['All','Identity','Bank','Membership','Loyalty','Travel','Other'];
+const categories = ['All','Favorites','Identity','Bank','Membership','Loyalty','Travel','Business','Insurance','Education','Other'];
 
 // ── IndexedDB for photos ─────────────────────────────────────────────────────
 let photoDB = null;
@@ -56,18 +58,20 @@ async function deletePhotos(id) {
 }
 
 // ── Colour swatches ──────────────────────────────────────────────────────────
-function buildSwatches(selectedColor = 'purple') {
+let selectedColor = 'purple';
+
+function buildSwatches(color = 'purple') {
+  selectedColor = color;
   const wrap = $('colorSwatches');
   wrap.innerHTML = Object.entries(PALETTE).map(([key, p]) =>
     `<div class="color-swatch${key === selectedColor ? ' selected' : ''}"
       style="background:${p.grad}" data-color="${key}" title="${key}"></div>`
   ).join('');
-  $('color').value = selectedColor;
   wrap.querySelectorAll('.color-swatch').forEach(s => {
     s.addEventListener('click', () => {
+      selectedColor = s.dataset.color;
       wrap.querySelectorAll('.color-swatch').forEach(x => x.classList.remove('selected'));
       s.classList.add('selected');
-      $('color').value = s.dataset.color;
     });
   });
 }
@@ -84,12 +88,16 @@ function esc(s = '') {
 function loadCards() {
   try { const s = localStorage.getItem(STORAGE_KEY); cards = s ? JSON.parse(s) : []; if (!Array.isArray(cards)) cards = []; }
   catch(e) { cards = []; toast('Could not read saved cards.'); }
+  document.body.classList.toggle('dark', localStorage.getItem(THEME_KEY) !== 'light');
 }
 // Save only metadata — no photos in localStorage
 function saveVault() {
   const meta = cards.map(({ front: _f, back: _b, ...rest }) => rest);
   localStorage.setItem(STORAGE_KEY, JSON.stringify(meta));
 }
+
+// ── Wallet expand state ──────────────────────────────────────────────────────
+let walletExpanded = false;
 
 // ── Render ───────────────────────────────────────────────────────────────────
 function render() {
@@ -102,8 +110,8 @@ function render() {
 
   const q = $('searchInput').value.toLowerCase();
   let list = cards.filter(c =>
-    (active === 'All' || c.category === active) &&
-    [c.name, c.holder, c.number, c.category].join(' ').toLowerCase().includes(q)
+    (active === 'All' || (active === 'Favorites' ? c.favorite : c.category === active)) &&
+    [c.name, c.holder, c.number, c.category, c.notes].join(' ').toLowerCase().includes(q)
   );
   list.sort((a, b) => sortNewest ? b.created - a.created : a.name.localeCompare(b.name));
 
@@ -113,25 +121,40 @@ function render() {
       <h3>${cards.length ? 'No matching cards' : 'No cards yet'}</h3>
       <p>${cards.length ? 'Try another search or category.' : 'Tap + to add your first card.'}</p>
     </div>`;
+    $('expandBtn').style.display = 'none';
     return;
   }
 
-  $('cards').innerHTML = list.map(c => {
+  const stack = $('cards');
+  walletExpanded ? stack.classList.add('expanded') : stack.classList.remove('expanded');
+
+  stack.innerHTML = list.map((c, i) => {
     const p = PALETTE[c.color] || PALETTE.purple;
     const num = c.number ? '•••• ' + esc(c.number.slice(-4)) : '';
-    return `<article class="wl-card" style="background:${p.grad}" data-open="${esc(c.id)}">
-      <div class="wl-card-top">
-        <span class="wl-card-chip">${esc(c.category)}</span>
-        <button class="wl-card-menu" data-menu="${esc(c.id)}" aria-label="Options">···</button>
-      </div>
-      <div class="wl-card-name">${esc(c.name)}</div>
-      <div class="wl-card-holder">${esc(c.holder || 'CARDHOLDER')}</div>
-      <div class="wl-card-bottom">
-        <span class="wl-card-number">${num}</span>
-        <span class="wl-card-expiry">${esc(c.expiry || '')}</span>
-      </div>
-    </article>`;
+    const delay = walletExpanded ? i * 0.04 : 0;
+    return `<div class="wl-wallet-item" style="z-index:${list.length - i}">
+      <article class="wl-card" style="background:${p.grad};animation-delay:${delay}s" data-open="${esc(c.id)}">
+        <div class="wl-card-top">
+          <span class="wl-card-chip">${esc(c.category)}${c.favorite ? ' · ★' : ''}</span>
+          <button class="wl-card-menu" data-menu="${esc(c.id)}" aria-label="Options">···</button>
+        </div>
+        <div class="wl-card-name">${esc(c.name)}</div>
+        <div class="wl-card-holder">${esc(c.holder || 'CARDHOLDER')}</div>
+        <div class="wl-card-bottom">
+          <span class="wl-card-number">${num}</span>
+          <span class="wl-card-expiry">${esc(c.expiry || '')}</span>
+        </div>
+      </article>
+    </div>`;
   }).join('');
+
+  const expandBtn = $('expandBtn');
+  if (list.length > 1) {
+    expandBtn.style.display = 'block';
+    expandBtn.textContent = walletExpanded ? 'Collapse ⌃' : `Show all ${list.length} cards ⌄`;
+  } else {
+    expandBtn.style.display = 'none';
+  }
 }
 
 // ── Form ─────────────────────────────────────────────────────────────────────
@@ -174,9 +197,10 @@ $('cardForm').addEventListener('submit', async e => {
       holder: $('holder').value.trim(),
       number: $('number').value.trim(),
       expiry: $('expiry').value.trim(),
-      color: $('color').value || 'purple',
+      color: selectedColor || 'purple',
       notes: $('notes').value.trim(),
       created: old?.created || Date.now(),
+      favorite: old?.favorite || false,
     };
     if (old) cards = cards.map(x => x.id === id ? c : x);
     else cards.unshift(c);
@@ -199,7 +223,24 @@ async function detail(id) {
     ['Number / Code', c.number || '—'],
     ['Expiry', c.expiry || '—'],
     ['Notes', c.notes || '—'],
+    ['Favourite', c.favorite ? 'Yes' : 'No'],
   ];
+  // Build photo section — flip widget if both sides, static images if one or none
+  let photoHtml = '';
+  if (front && back) {
+    photoHtml = `
+    <div class="card-flip-wrap">
+      <div class="card-flipper" id="cardFlipper" role="button" aria-label="Tap to flip card">
+        <div class="card-face card-face--front"><img src="${front}" alt="Card front"></div>
+        <div class="card-face card-face--back"><img src="${back}" alt="Card back"></div>
+      </div>
+      <div class="card-flip-hint">Tap to flip ↩</div>
+    </div>`;
+  } else {
+    if (front) photoHtml += `<div style="padding:0 20px 4px"><img class="detail-img" src="${front}" alt="Card front"></div>`;
+    if (back)  photoHtml += `<div style="padding:4px 20px"><img class="detail-img" src="${back}" alt="Card back"></div>`;
+  }
+
   $('detailContent').innerHTML = `
     <div class="detail-card-preview" style="background:${p.grad}">
       <span class="wl-card-chip">${esc(c.category)}</span>
@@ -210,16 +251,21 @@ async function detail(id) {
         <strong>${esc(c.expiry || '')}</strong>
       </div>
     </div>
-    ${front ? `<div style="padding:0 20px 4px"><img class="detail-img" src="${front}" alt="Card front"></div>` : ''}
+    ${photoHtml}
     <div class="detail-rows">
       ${rows.map(([l,v]) => `<div class="detail-row"><span class="detail-row-label">${l}</span><span class="detail-row-value">${esc(v)}</span></div>`).join('')}
     </div>
-    ${back ? `<div style="padding:4px 20px"><img class="detail-img" src="${back}" alt="Card back"></div>` : ''}
     <div class="detail-actions">
+      <button class="btn-action" id="favoriteCard">${c.favorite ? '★ Remove favourite' : '☆ Add favourite'}</button>
       <button class="btn-action" id="editCard">Edit</button>
       <button class="btn-action danger" id="deleteCard">Delete</button>
     </div>`;
   showSheet('detailOverlay');
+
+  // Wire flip toggle
+  const flipper = document.getElementById('cardFlipper');
+  if (flipper) flipper.onclick = () => flipper.classList.toggle('flipped');
+  $('favoriteCard').onclick = () => { c.favorite = !c.favorite; saveVault(); hideSheet('detailOverlay'); render(); toast(c.favorite ? 'Added to favourites.' : 'Removed from favourites.'); };
   $('editCard').onclick = () => { hideSheet('detailOverlay'); openForm(c); };
   $('deleteCard').onclick = async () => {
     if (confirm('Delete this card permanently?')) {
@@ -237,11 +283,62 @@ async function detail(id) {
 function showSheet(id) { $(id).classList.add('show'); }
 function hideSheet(id) { $(id).classList.remove('show'); }
 
+// ── Privacy, encrypted backup and reminders ───────────────────────────────────
+const encoder = new TextEncoder();
+function bytesToB64(bytes) { let bin=''; bytes.forEach(b=>bin+=String.fromCharCode(b)); return btoa(bin); }
+function b64ToBytes(value) { return Uint8Array.from(atob(value), c=>c.charCodeAt(0)); }
+async function deriveKey(passphrase, salt) {
+  const material = await crypto.subtle.importKey('raw', encoder.encode(passphrase), 'PBKDF2', false, ['deriveKey']);
+  return crypto.subtle.deriveKey({name:'PBKDF2', salt, iterations:250000, hash:'SHA-256'}, material, {name:'AES-GCM', length:256}, false, ['encrypt','decrypt']);
+}
+async function encryptedExport(passphrase) {
+  const photos = {};
+  for (const c of cards) for (const side of ['front','back']) { const data=await loadPhoto(c.id,side); if(data) photos[`${c.id}_${side}`]=data; }
+  const payload=encoder.encode(JSON.stringify({format:'CardVaultBackup',version:1,createdAt:new Date().toISOString(),cards,photos}));
+  const salt=crypto.getRandomValues(new Uint8Array(16)), iv=crypto.getRandomValues(new Uint8Array(12));
+  const key=await deriveKey(passphrase,salt); const cipher=await crypto.subtle.encrypt({name:'AES-GCM',iv},key,payload);
+  return {format:'CardVaultEncryptedBackup',version:1,kdf:'PBKDF2-SHA256',iterations:250000,cipher:'AES-256-GCM',salt:bytesToB64(salt),iv:bytesToB64(iv),data:bytesToB64(new Uint8Array(cipher))};
+}
+function downloadJSON(obj,name) { const blob=new Blob([JSON.stringify(obj)],{type:'application/json'}); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download=name; a.click(); setTimeout(()=>URL.revokeObjectURL(url),1000); }
+async function importEncryptedBackup(file, passphrase) {
+  const box=JSON.parse(await file.text());
+  if(box.format!=='CardVaultEncryptedBackup' || box.version!==1) throw new Error('Unsupported backup file.');
+  const key=await deriveKey(passphrase,b64ToBytes(box.salt));
+  const plain=await crypto.subtle.decrypt({name:'AES-GCM',iv:b64ToBytes(box.iv)},key,b64ToBytes(box.data));
+  const data=JSON.parse(new TextDecoder().decode(plain));
+  if(data.format!=='CardVaultBackup'||!Array.isArray(data.cards)) throw new Error('Backup contents are invalid.');
+  if(!confirm(`Restore ${data.cards.length} cards? This replaces the cards currently on this device.`)) return;
+  cards=data.cards; saveVault();
+  const db=await openPhotoDB(); await new Promise((resolve,reject)=>{const tx=db.transaction('photos','readwrite');tx.objectStore('photos').clear();for(const [key,value] of Object.entries(data.photos||{})) tx.objectStore('photos').put(value,key);tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);});
+  render(); toast('Encrypted backup restored.');
+}
+async function pinDigest(pin, salt) { const key=await crypto.subtle.importKey('raw',encoder.encode(pin),'PBKDF2',false,['deriveBits']); const bits=await crypto.subtle.deriveBits({name:'PBKDF2',salt,iterations:180000,hash:'SHA-256'},key,256); return bytesToB64(new Uint8Array(bits)); }
+async function setupPin(pin) { const salt=crypto.getRandomValues(new Uint8Array(16)); const digest=await pinDigest(pin,salt); localStorage.setItem(SECURITY_KEY,JSON.stringify({salt:bytesToB64(salt),digest})); toast('PIN lock enabled.'); }
+async function verifyPin(pin) { const cfg=JSON.parse(localStorage.getItem(SECURITY_KEY)||'null'); if(!cfg)return true; return (await pinDigest(pin,b64ToBytes(cfg.salt)))===cfg.digest; }
+function openSettings() { showSheet('settingsOverlay'); $('pinStatus').textContent=localStorage.getItem(SECURITY_KEY)?'PIN lock is enabled':'PIN lock is disabled'; }
+$('settingsBtn').onclick=openSettings;
+$('enablePinBtn').onclick=async()=>{const pin=$('pinInput').value.trim();if(!/^\d{6}$/.test(pin)){toast('Choose a 6-digit PIN.');return;}await setupPin(pin);$('pinInput').value='';openSettings();};
+$('disablePinBtn').onclick=async()=>{if(!localStorage.getItem(SECURITY_KEY)){toast('PIN lock is already disabled.');return;}const pin=prompt('Enter your current PIN to disable the lock:');if(pin===null)return;if(await verifyPin(pin)){localStorage.removeItem(SECURITY_KEY);toast('PIN lock disabled.');openSettings();}else toast('Incorrect PIN.');};
+$('exportBackupBtn').onclick=async()=>{const pass=$('backupPass').value;if(pass.length<10){toast('Use a backup passphrase of at least 10 characters.');return;}try{downloadJSON(await encryptedExport(pass),'cardvault-encrypted-backup.json');toast('Encrypted backup created. Keep your passphrase safe.');}catch(e){toast('Backup failed: '+e.message);}};
+$('importBackupInput').onchange=async e=>{const file=e.target.files[0];if(!file)return;const pass=prompt('Enter the backup passphrase:');if(pass===null)return;try{await importEncryptedBackup(file,pass);}catch(err){toast('Could not restore backup. Check the passphrase and file.');}e.target.value='';};
+$('reminderBtn').onclick=async()=>{if(!('Notification'in window)){toast('Notifications are not supported in this browser.');return;}const result=await Notification.requestPermission();toast(result==='granted'?'Expiry notifications enabled when the app is open.':'Notification permission not granted.');};
+$('expiryBtn').onclick=()=>{const soon=cards.filter(c=>{const m=(c.expiry||'').match(/^(\d{1,2})\/(\d{4})$/);if(!m)return false;const end=new Date(Number(m[2]),Number(m[1]),1);const now=new Date();return end>=new Date(now.getFullYear(),now.getMonth(),1)&&end<=new Date(now.getFullYear(),now.getMonth()+3,1);});toast(soon.length?`${soon.length} card(s) expire within 3 months.`:'No cards expiring within 3 months.');};
+$('lockNowBtn').onclick=()=>{hideSheet('settingsOverlay');lockVault();};
+function lockVault(){if(!localStorage.getItem(SECURITY_KEY))return;$('lockOverlay').classList.add('show');$('unlockPin').value='';$('unlockPin').focus();}
+$('unlockBtn').onclick=async()=>{if(await verifyPin($('unlockPin').value)){ $('lockOverlay').classList.remove('show');toast('Vault unlocked.');}else toast('Incorrect PIN. Try again.');};
+$('unlockPin').addEventListener('keydown',e=>{if(e.key==='Enter')$('unlockBtn').click();});
+
 // ── Event wiring ──────────────────────────────────────────────────────────────
 $('addBtn').onclick = () => openForm();
 
+$('expandBtn').onclick = () => {
+  walletExpanded = !walletExpanded;
+  render();
+};
+
 $('themeBtn').onclick = () => {
   document.body.classList.toggle('dark');
+  localStorage.setItem(THEME_KEY, document.body.classList.contains('dark') ? 'dark' : 'light');
   const dark = document.body.classList.contains('dark');
   $('themeBtn').querySelector('svg path').setAttribute('d',
     dark
@@ -250,7 +347,7 @@ $('themeBtn').onclick = () => {
   );
 };
 
-$('searchInput').oninput = render;
+$('searchInput').oninput = () => { walletExpanded = false; render(); };
 
 $('sortBtn').onclick = () => {
   sortNewest = !sortNewest;
@@ -260,7 +357,7 @@ $('sortBtn').onclick = () => {
 
 $('filters').addEventListener('click', e => {
   const b = e.target.closest('[data-cat]');
-  if (b) { active = b.dataset.cat; render(); }
+  if (b) { active = b.dataset.cat; walletExpanded = false; render(); }
 });
 
 $('cards').addEventListener('click', e => {
@@ -277,7 +374,7 @@ document.querySelectorAll('[data-close]').forEach(b =>
   }
 );
 
-['formOverlay','detailOverlay','scannerOverlay'].forEach(id =>
+['formOverlay','detailOverlay','scannerOverlay','settingsOverlay'].forEach(id =>
   $(id).addEventListener('click', e => {
     if (e.target.id === id) {
       hideSheet(id);
@@ -288,6 +385,8 @@ document.querySelectorAll('[data-close]').forEach(b =>
 
 // ── Camera capture (rectangle crop) ────────────────────────────────────────────────────
 let cameraStream = null, captureTarget = null; // 'front' | 'back'
+let autoDetectRaf = null, autoDetectSince = null;
+const AUTO_HOLD_MS = 1500; // ms card must stay detected before auto-capture
 // Card aspect ratio 85.6mm × 54mm ≈ 1.586
 const CARD_RATIO = 85.6 / 54;
 
@@ -314,6 +413,7 @@ async function openCamera(side) {
     $('cameraVideo').srcObject = cameraStream;
     $('cameraOverlay').classList.add('show');
     positionFrame();
+    startAutoDetect();
   } catch(e) {
     // fallback to file picker
     $(side === 'front' ? 'frontImage' : 'backImage').click();
@@ -321,9 +421,11 @@ async function openCamera(side) {
 }
 
 function closeCamera() {
+  stopAutoDetect();
   if (cameraStream) { cameraStream.getTracks().forEach(t => t.stop()); cameraStream = null; }
   $('cameraVideo').srcObject = null;
   $('cameraOverlay').classList.remove('show');
+  setShutterProgress(0);
 }
 
 function captureFrame() {
@@ -359,9 +461,143 @@ function captureFrame() {
   const btn = side === 'front' ? $('captureFront') : $('captureBack');
   btn.innerHTML = `<img src="${dataUrl}"><span style="font-size:11px;color:var(--ink2);margin-top:4px">${side === 'front' ? 'Front' : 'Back'} ✓</span>`;
 
-  // Store on the hidden input via a DataTransfer trick, or just stash on element
   btn._capturedDataUrl = dataUrl;
   toast('Photo captured ✓');
+
+  // Only OCR the front — that's where number, expiry and name live
+  if (side === 'front' && $('formOverlay').classList.contains('show')) {
+    ocrCardFront(dataUrl);
+  }
+}
+
+// ── OCR card front ──────────────────────────────────────────────────────────────────
+let ocrWorker = null;
+async function getOcrWorker() {
+  if (ocrWorker) return ocrWorker;
+  ocrWorker = await Tesseract.createWorker('eng', 1, { workerPath: 'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/worker.min.js', corePath: 'https://cdn.jsdelivr.net/npm/tesseract.js-core@5/tesseract-core-simd-lstm.wasm.js' });
+  return ocrWorker;
+}
+
+function parseCardOcr(text) {
+  const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+  const result = {};
+
+  // Card number: 4 groups of 3–4 digits (with spaces, dashes or dots)
+  const numMatch = text.match(/\b(\d{4}[\s\-.]\d{4}[\s\-.]\d{4}[\s\-.]\d{1,4}|\d{13,19})\b/);
+  if (numMatch) result.number = numMatch[0].replace(/[\s\-.]/g, ' ').trim();
+
+  // Expiry: MM/YY or MM/YYYY
+  const expMatch = text.match(/\b(0[1-9]|1[0-2])\/([0-9]{2}|[0-9]{4})\b/);
+  if (expMatch) {
+    const yr = expMatch[2].length === 2 ? '20' + expMatch[2] : expMatch[2];
+    result.expiry = expMatch[1] + '/' + yr;
+  }
+
+  // Cardholder: an ALL-CAPS line of 2+ words, not a known label
+  const skipWords = /^(VALID|THRU|THROUGH|EXPIRES|EXPIRY|DEBIT|CREDIT|VISA|MASTERCARD|MAESTRO|AMEX|MEMBER|SINCE|BANK|CARD|PLATINUM|GOLD|CLASSIC|STANDARD|WORLD|ELITE)$/;
+  for (const line of lines) {
+    const words = line.split(/\s+/);
+    if (words.length >= 2 && words.every(w => /^[A-Z][A-Z\-\.]{0,}$/.test(w)) && !words.every(w => skipWords.test(w))) {
+      result.holder = words.join(' ');
+      break;
+    }
+  }
+
+  return result;
+}
+
+async function ocrCardFront(dataUrl) {
+  toast('Reading card…');
+  try {
+    const worker = await getOcrWorker();
+    const { data: { text } } = await worker.recognize(dataUrl);
+    const parsed = parseCardOcr(text);
+    let filled = [];
+    if (parsed.number  && !$('number').value.trim())  { $('number').value  = parsed.number;  filled.push('number'); }
+    if (parsed.expiry  && !$('expiry').value.trim())  { $('expiry').value  = parsed.expiry;  filled.push('expiry'); }
+    if (parsed.holder  && !$('holder').value.trim())  { $('holder').value  = parsed.holder;  filled.push('name'); }
+    toast(filled.length ? `Detected: ${filled.join(', ')} ✓` : 'Could not read card text');
+  } catch(e) {
+    toast('OCR failed — fill in manually');
+  }
+}
+
+// ── Auto-detect card in frame ────────────────────────────────────────────────
+function sampleEdgeContrast(ctx, x, y, size) {
+  // Returns average absolute brightness difference between adjacent pixels in a small patch
+  const d = ctx.getImageData(x, y, size, size).data;
+  let diff = 0, n = 0;
+  for (let i = 0; i < d.length - 4; i += 4) {
+    const b1 = (d[i] + d[i+1] + d[i+2]) / 3;
+    const b2 = (d[i+4] + d[i+5] + d[i+6]) / 3;
+    diff += Math.abs(b1 - b2); n++;
+  }
+  return n ? diff / n : 0;
+}
+
+function setShutterProgress(p) {
+  // p = 0..1; draw arc on shutter button via CSS conic-gradient
+  const deg = Math.round(p * 360);
+  $('camShutter').style.background = deg > 0
+    ? `conic-gradient(#0a84ff ${deg}deg, #fff ${deg}deg)`
+    : '#fff';
+}
+
+function startAutoDetect() {
+  autoDetectSince = null;
+  const probe = document.createElement('canvas');
+  probe.width = probe.height = 64;
+  const ctx = probe.getContext('2d');
+
+  function tick() {
+    autoDetectRaf = requestAnimationFrame(tick);
+    const v = $('cameraVideo');
+    if (!v || v.readyState < 2 || !cameraStream) return;
+
+    const frame = $('camFrame');
+    const fx = parseFloat(frame.style.left), fy = parseFloat(frame.style.top);
+    const fw = parseFloat(frame.style.width), fh = parseFloat(frame.style.height);
+    if (!fw || !fh) return;
+
+    const rendered = v.getBoundingClientRect();
+    const sx = vNatCoord(fx, rendered.left, v.videoWidth, rendered.width);
+    const sy = vNatCoord(fy, rendered.top, v.videoHeight, rendered.height);
+    const sw = fw * (v.videoWidth / rendered.width);
+    const sh = fh * (v.videoHeight / rendered.height);
+
+    // Sample 4 corner patches of the card frame area
+    const patch = 64, scores = [];
+    [[sx, sy],[sx+sw-patch, sy],[sx, sy+sh-patch],[sx+sw-patch, sy+sh-patch]].forEach(([px,py]) => {
+      ctx.drawImage(v, px, py, patch, patch, 0, 0, patch, patch);
+      scores.push(sampleEdgeContrast(ctx, 0, 0, patch));
+    });
+    const minScore = Math.min(...scores);
+    const detected = minScore > 8; // threshold: all 4 corners must have edges
+
+    if (detected) {
+      if (!autoDetectSince) autoDetectSince = Date.now();
+      const elapsed = Date.now() - autoDetectSince;
+      setShutterProgress(Math.min(elapsed / AUTO_HOLD_MS, 1));
+      if (elapsed >= AUTO_HOLD_MS) {
+        stopAutoDetect();
+        captureFrame();
+        return;
+      }
+    } else {
+      autoDetectSince = null;
+      setShutterProgress(0);
+    }
+  }
+  tick();
+}
+
+function vNatCoord(screenPos, renderedOffset, naturalSize, renderedSize) {
+  return (screenPos - renderedOffset) * (naturalSize / renderedSize);
+}
+
+function stopAutoDetect() {
+  if (autoDetectRaf) { cancelAnimationFrame(autoDetectRaf); autoDetectRaf = null; }
+  autoDetectSince = null;
 }
 
 $('captureFront').onclick = () => openCamera('front');
@@ -432,13 +668,48 @@ $('scanBtn').onclick = startScanner;
 $('stopScan').onclick = stopScanner;
 $('manualScanClose').onclick = () => { hideSheet('scannerOverlay'); stopScanner(); };
 
+// ── Swipe-down to dismiss sheets ────────────────────────────────────────────
+['formOverlay','detailOverlay','scannerOverlay','settingsOverlay'].forEach(overlayId => {
+  const overlay = $(overlayId);
+  const sheet = overlay.querySelector('.sheet');
+  const handle = overlay.querySelector('.sheet-handle');
+  if (!handle) return;
+  let startY = 0, curY = 0, dragging = false;
+  const onMove = e => { if (!dragging) return; curY = e.touches ? e.touches[0].clientY : e.clientY; const dy = Math.max(0, curY - startY); sheet.style.transform = `translateY(${dy}px)`; };
+  const onEnd = () => {
+    if (!dragging) return;
+    dragging = false;
+    sheet.style.transition = '';
+    window.removeEventListener('mousemove', onMove);
+    window.removeEventListener('mouseup', onEnd);
+    if (curY - startY > 100) { hideSheet(overlayId); if (overlayId === 'scannerOverlay') stopScanner(); }
+    else sheet.style.transform = '';
+  };
+  handle.addEventListener('touchstart', e => { startY = e.touches[0].clientY; dragging = true; sheet.style.transition = 'none'; }, { passive: true });
+  handle.addEventListener('touchmove', onMove, { passive: true });
+  handle.addEventListener('touchend', onEnd);
+  handle.addEventListener('mousedown', e => {
+    startY = e.clientY; dragging = true; sheet.style.transition = 'none';
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onEnd);
+  });
+});
+
 // ── Boot ──────────────────────────────────────────────────────────────────────
 (async () => {
   loadCards();
   render();
+  if (localStorage.getItem(SECURITY_KEY)) lockVault();
   if ('serviceWorker' in navigator) {
     try {
       await navigator.serviceWorker.register('./sw.js');
     } catch(e) { console.warn('SW registration failed', e); }
   }
+  // Dismiss splash after card fan animation completes (~2.1s)
+  setTimeout(() => {
+    const splash = $('splashScreen');
+    if (!splash) return;
+    splash.classList.add('hide');
+    splash.addEventListener('transitionend', () => splash.remove(), { once: true });
+  }, 2100);
 })();
